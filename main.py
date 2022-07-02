@@ -37,11 +37,15 @@ async def start(ctx: ApplicationContext):
 async def finished_callback(sink: discord.sinks.WaveSink, channel: discord.TextChannel, *args):
     recorded_users = [f"<@{user_id}>" for user_id, audio in sink.audio_data.items()]
     await sink.vc.disconnect()
+    file_link = None
     for audio in sink.audio_data.items():
-        await utils.upload_to_cloud(audio[1].file)
+        file_link = utils.upload_to_cloud(audio[1].file)
+    
+    if file_link:
+        await channel.send(f"Recording finished! Link: {file_link}")
+    else:
+        await channel.send("Error occured during recording.")
 
-    files = [discord.File(audio.file, f"{user_id}.{sink.encoding}") for user_id, audio in sink.audio_data.items()]
-    await channel.send(f"Finished! Recorded audio for {', '.join(recorded_users)}.", files=files)
 
 
 @bot.command()
