@@ -1,22 +1,33 @@
 import utils
 import os, soundfile, io
 import numpy as np
-import speech_recognition as sr
 #from pydub import AudioSegment
 
 import discord
 import config
 from discord.commands import ApplicationContext
 
+import deepspeech
+
+# Carregue o modelo e o arquivo de vocabulário
+model_path = "deepspeech-0.9.3-models.pbmm"
+scorer_path = "deepspeech-0.9.3-models.scorer"
+ds = deepspeech.Model(model_path)
+ds.enableExternalScorer(scorer_path)
+
 bot = discord.Bot(debug_guilds=config.guild_ids)
 bot.connections = {}
 discord.opus.load_opus(name=config.opus_path)
 
 
+# Função para transcrever o áudio
+def transcribe_audio(audio_bytes):
+    return ds.stt(audio_bytes)
+
 @bot.command()
 async def start(ctx: ApplicationContext):
     """
-    Record your voice!
+    Record your voice and transcribe in real-time!
     """
     await ctx.defer()
     sink = discord.sinks.WaveSink()
@@ -35,38 +46,26 @@ async def start(ctx: ApplicationContext):
         ctx.channel,
     )
 
-    await ctx.respond("The recording has started!")
+    await ctx.respond("The recording and transcription have started!")
+
 
 
 
 async def finished_callback(sink: discord.sinks.WaveSink, channel: discord.TextChannel, *args):
-    recorded_users = [f"<@{user_id}>" for user_id, audio in sink.audio_data.items()]
+    audio_data = sink.get_audio_data()
 
-    audio_dir = "output"
-    os.makedirs(audio_dir, exist_ok=True)
-
-    recognizer = sr.Recognizer()
-
-    for user_id, audio in sink.audio_data.items():
-        audio_bytes = audio.file.getvalue()
-        file_path = os.path.join(audio_dir, f"{user_id}.wav")
-        with open(file_path, 'wb') as f:
-            f.write(audio_bytes)
-
-        with sr.AudioFile(file_path) as source:
-            audio_data = recognizer.record(source)
-            try:
-                transcribed_text = recognizer.recognize_google(audio_data, language="pt-BR")
-                print(f"User {user_id} transcribed: {transcribed_text}")
-            except sr.UnknownValueError:
-                print(f"User {user_id} speech not recognized")
+    transcriptions = {}
+    for user_id, audio in audio_data.items():
+        transcription = transcribe_audio(audio.file.getvalue())
+        transcriptions[user_id] = transcription
 
     await sink.vc.disconnect()
 
-    await channel.send("Recording finished! Speech transcription completed.")
+    # Print transcriptions
+    for user_id, transcription in transcriptions.items():
+        await channel.send(f"<@{user_id}> said: {transcription}")
 
-
-
+    await channel.send("Recording and transcription finished!")
 
 
 
